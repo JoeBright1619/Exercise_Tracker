@@ -47,12 +47,33 @@ const exerciseSchema = new mongoose.Schema({
 
 const exerciseModel = mongoose.model('exercise',exerciseSchema)
 
-const logsSchema = new mongoose({
+const logsSchema = new mongoose.Schema({
   _id:{
     type: String,
     required: true
+  },
+  username:{
+    type: String,
+    required: true
+  },
+  count: Number,
+  log:[{
+    description: {
+    type: String,
+    required: true
+  },
+  duration: {
+    type: Number,
+    required: true
+  },
+  date: {
+    type: Date,
+    required: true
   }
+}]
 })
+
+const logsModel = mongoose.model("logs",logsSchema)
 //middlewares
 app.use(cors())
 app.use(express.static('public'))
@@ -74,7 +95,7 @@ app.post('/api/users',async(req, res)=>{
   });
   try{
   var user=await createUser.save()
-  console.log("successfully created user: "+user)
+  //console.log("successfully created user: "+user)
   res.json({username: user.username,_id: user._id})
   }
   catch(error){
@@ -86,7 +107,7 @@ app.post('/api/users',async(req, res)=>{
 app.get('/api/users',async(req, res)=>{
 try{
   var allUsers = await userModel.find();
-  console.log("all users were found!!");
+ // console.log("all users were found!!");
   res.json(allUsers)
 }
 catch(err){
@@ -104,14 +125,14 @@ app.post('/api/users/:_id/exercises',async(req, res)=>{
 
 var {_id} = req.params;
 var {description, duration, date} = req.body;
-console.log("the id is this one: "+_id)
+//console.log("the id is this one: "+_id)
 try{
   var user = await userModel.findById({_id});
   if(!user){
     res.send("userId doesn't exist")
   }
   else{
-  console.log("found and extracted userdata as: "+ user)
+  console.log("found and extracted user info as: "+ user)
   if(!date){
     date =new Date()
     }
@@ -119,7 +140,7 @@ try{
       date = new Date(date)
     }
  
-
+    /*
   var createExercise = new exerciseModel(
     {
     description,
@@ -129,14 +150,43 @@ try{
 
   var exercise = await createExercise.save();
 
- console.log(exercise)
+ console.log(exercise)*/
+
+  var logsInfo =await logsModel.findById(_id);
+
+  if(!logsInfo){
+    logsInfo = new logsModel({
+      _id,
+      username: user.username,
+      count: 1,
+      log:[{
+        description,
+        duration: parseInt(duration),
+        date: date
+      }]
+    })
+    var saveLogs = await logsInfo.save();
+    console.log("created log info: "+saveLogs);
+  }
+  else{
+    logsInfo.log.push({
+      description,
+      duration: parseInt(duration),
+      date: date
+    });
+    logsInfo.count = logsInfo.count + 1;
+    var saveLogs = await logsInfo.save();
+    console.log("updated log info: "+saveLogs);
+  }
+
   res.json({ 
     _id: _id,
     username: user.username,
     description,
-    duration,
+    duration: parseInt(duration),
     date: date.toDateString()
   })
+  
   }
 }
 catch(err){
@@ -145,6 +195,75 @@ catch(err){
 }
 })
 
+
+app.get("/api/users/:_id/logs", async(req, res)=>{
+  var {_id} = req.params
+  try{
+    /*
+    var extractEX = await exerciseModel.find();
+  var dateComp1= new Date("2020-03")
+  var dateComp2= new Date("2024-05")
+  var arr=extractEX.filter((current)=>{
+    return dateComp2 >= current.date &&  current.date >= dateComp1;
+  })
+  console.log(arr.length)
+  console.log(extractEX.length)
+  */
+ var logsInfo = await logsModel.find({_id},
+  {'log._id': 0,__v: 0}
+ ).exec();
+  
+  var {log, _id, username, count} = logsInfo[0];
+  var logObj = {
+    _id,
+    username
+  }
+  var from = new Date(req.query.from)
+  var to = new Date(req.query.to)
+  var limit = req.query.limit
+
+  if(from != "Invalid Date"){
+    
+    log= log.filter((element)=>{
+      return element.date >= from
+    })
+    count = log.length
+    logObj.from = from.toDateString();
+  }
+  if(to != "Invalid Date"){
+    log= log.filter((element)=>{
+      return element.date <= to
+    })
+    count = log.length
+    logObj.to = to.toDateString();
+  }
+  if(!isNaN(limit)){
+    console.log(limit)
+    log= log.filter((element, index)=>{
+      return index < limit
+    })
+    count = log.length
+  }
+  log = log.map((elem) => {
+    //elem.date = new Date(elem.date).toString(); // Convert to Date object if needed
+    return {
+      description: elem.description,
+      duration: elem.duration,
+      date: elem.date.toDateString()
+    };
+  });
+  console.log(log);
+  res.json({
+    ...logObj,
+    count,
+    log
+  });
+  }
+  catch(err){
+    console.log(err)
+
+  }
+})
 
 const listener = app.listen(process.env.PORT || 3000, () => {
   console.log('Your app is listening on port ' + listener.address().port)
